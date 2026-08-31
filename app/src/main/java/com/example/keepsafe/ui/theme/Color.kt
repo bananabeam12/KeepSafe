@@ -1,0 +1,77 @@
+package com.example.keepsafe.ui.theme
+
+import androidx.compose.ui.graphics.Color
+
+//LIGHT MODE VARIABLES
+val primaryLight = Color(0xFFD6EB9B) // Updated to Primary Fixed
+val onPrimaryLight = Color(0xFFFFFFFF)
+val primaryContainerLight = Color(0xFFD6EB9B)
+val onPrimaryContainerLight = Color(0xFF3C4C0E)
+val secondaryLight = Color(0xFF5B6147)
+val onSecondaryLight = Color(0xFFFFFFFF)
+val secondaryContainerLight = Color(0xFFDFE6C4)
+val onSecondaryContainerLight = Color(0xFF434931)
+val tertiaryLight = Color(0xFF39665F)
+val onTertiaryLight = Color(0xFFFFFFFF)
+val tertiaryContainerLight = Color(0xFFBCECE2)
+val onTertiaryContainerLight = Color(0xFF204E47)
+val errorLight = Color(0xFFBA1A1A)
+val onErrorLight = Color(0xFFFFFFFF)
+val errorContainerLight = Color(0xFFFFDAD6)
+val onErrorContainerLight = Color(0xFF93000A)
+val backgroundLight = Color(0xFFFFFFFF)
+val onBackgroundLight = Color(0xFF1B1C15)
+val surfaceLight = Color(0xFFFAFAEE)
+val onSurfaceLight = Color(0xFF1B1C15)
+val surfaceVariantLight = Color(0xFFE3E4D4)
+val onSurfaceVariantLight = Color(0xFF46483C)
+val outlineLight = Color(0xFF76786B)
+val outlineVariantLight = Color(0xFFC6C8B8)
+val scrimLight = Color(0xFF000000)
+val inverseSurfaceLight = Color(0xFF303129)
+val inverseOnSurfaceLight = Color(0xFFF2F1E5)
+val inversePrimaryLight = Color(0xFFBACF82)
+val surfaceDimLight = Color(0xFFDBDBCF)
+val surfaceBrightLight = Color(0xFFFAFAEE)
+val surfaceContainerLowestLight = Color(0xFFFFFFFF)
+val surfaceContainerLowLight = Color(0xFFF5F4E8)
+val surfaceContainerLight = Color(0xFFEFEFE2)
+val surfaceContainerHighLight = Color(0xFFE9E9DD)
+val surfaceContainerHighestLight = Color(0xFFE3E3D7)
+
+//DARK MODE VARIABLES
+val primaryDark = Color(0xFF546524)
+val backgroundDark = Color(0xFF0D0D0D)
+val surfaceTintDark = Color(0xFF546524)
+val surfaceContainerDark = Color(0xFF181818) // Your Card Container Surface
+val outlineVariantDark = Color(0xFFC6C8B8).copy(alpha = 0.45f) // Your Card Border Surface
+val onBackgroundDark = Color(0xFFE6E6E5) // Your Text
+val onSurfaceDark = Color(0xFFE6E6E5) // Your Text
+val onPrimaryDark = Color(0xFFE6E6E5) // Your Text (applied for contrast on primary)
+
+// 2. Filled-in Dark Mode Counterparts (Harmonious green/dark tones)
+val primaryContainerDark = Color(0xFF263310)
+val onPrimaryContainerDark = Color(0xFFD6EB9B)
+val secondaryDark = Color(0xFFC3CAA9)
+val onSecondaryDark = Color(0xFF181E09)
+val secondaryContainerDark = Color(0xFF434931)
+val onSecondaryContainerDark = Color(0xFFDFE6C4)
+val tertiaryDark = Color(0xFFDCE672) // Bright accent matching the FAB in your screenshot
+val onTertiaryDark = Color(0xFF303300)
+val tertiaryContainerDark = Color(0xFF454B00)
+val onTertiaryContainerDark = Color(0xFFE2EA81)
+val errorDark = Color(0xFFFFB4AB)
+val onErrorDark = Color(0xFF690005)
+val errorContainerDark = Color(0xFF93000A)
+val onErrorContainerDark = Color(0xFFFFDAD6)
+val surfaceDark = Color(0xFF121310)
+val surfaceVariantDark = Color(0xFF45483C)
+val onSurfaceVariantDark = Color(0xFFC6C8B8)
+val outlineDark = Color(0xFF8F9283)
+val inverseSurfaceDark = Color(0xFFE6E6E5)
+val inverseOnSurfaceDark = Color(0xFF303129)
+val inversePrimaryDark = Color(0xFFBACF82)
+val surfaceContainerLowestDark = Color(0xFF000000)
+val surfaceContainerLowDark = Color(0xFF121212)
+val surfaceContainerHighDark = Color(0xFF242424)
+val surfaceContainerHighestDark = Color(0xFF333333)
