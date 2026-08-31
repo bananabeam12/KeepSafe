@@ -18,7 +18,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            KeepSafeTheme(dynamicColor = false) { // Brand colors locked!
+            KeepSafeTheme(dynamicColor = false) {
                 KeepSafeNavigation()
             }
         }

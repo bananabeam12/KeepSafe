@@ -19,10 +19,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
+import com.example.keepsafe.Routes
 import com.example.keepsafe.viewmodel.HomeViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -47,25 +49,62 @@ fun ItemDetailScreen(
             )
         },
         bottomBar = {
-            // Pinned action button container with safe window padding applied
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.background)
-                    .navigationBarsPadding() // Safely clears the system phone gesture/nav bar
+                    .navigationBarsPadding()
                     .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
-                Button(
-                    onClick = { /* Handle item retrieval flow */ },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.fillMaxWidth().height(52.dp)
-                ) {
-                    Text(
-                        text = "Retrieve Item",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color(0xFF1B1C15)
-                    )
+                if (!item.isRetrieved) {
+                    Button(
+                        onClick = {
+                            viewModel.retrieveItem(item.id)
+                            // TIP: Pass itemId instead of title so the next screen can edit it!
+                            navController.navigate(Routes.itemRetrieved(item.id))
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer),
+                        modifier = Modifier.fillMaxWidth().height(52.dp)
+                    ) {
+                        Text(
+                            text = "Retrieve Item",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color(0xFF1B1C15)
+                        )
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                // TODO: Trigger your Relocate Camera Flow
+                                viewModel.startRelocateFlow(item.id)
+                                navController.navigate(Routes.HOME)
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f).height(52.dp)
+                        ) {
+                            Text("Relocate")
+                        }
+
+                        Button(
+                            onClick = {
+                                viewModel.fastPutBack(item.id)
+                                // Pop back or go home
+                                navController.navigate(Routes.HOME)
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer),
+                            modifier = Modifier.weight(1f).height(52.dp)
+                        ) {
+                            Text("Put Back Here", color = Color(0xFF1B1C15))
+                        }
+                    }
                 }
             }
         }
@@ -87,34 +126,52 @@ fun ItemDetailScreen(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(160.dp)
+                        .height(140.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
-                    Image(
-                        painter = painterResource(id = item.itemPlaceImageRes),
-                        contentDescription = "Item Place",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    if (item.itemPlaceBitmap != null) {
+                        Image(
+                            bitmap = item.itemPlaceBitmap.asImageBitmap(),
+                            contentDescription = "Item Close-up",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Image(
+                            painter = painterResource(id = item.itemPlaceImageRes),
+                            contentDescription = "Item Close-up",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
 
                 // Wider Room Section Photo
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(160.dp)
+                        .height(140.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center
                 ) {
-                    Image(
-                        painter = painterResource(id = item.roomSectionImageRes),
-                        contentDescription = "Room Section",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    if (item.roomSectionBitmap != null) {
+                        Image(
+                            bitmap = item.roomSectionBitmap.asImageBitmap(),
+                            contentDescription = "Room Section",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Image(
+                            painter = painterResource(id = item.roomSectionImageRes),
+                            contentDescription = "Room Section",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
             }
 

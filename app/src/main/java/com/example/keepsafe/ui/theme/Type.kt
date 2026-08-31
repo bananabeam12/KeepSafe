@@ -29,6 +29,12 @@ val Typography = Typography(
         fontSize = 32.sp,
         lineHeight = 40.sp
     ),
+    headlineMedium = TextStyle(
+        fontFamily = Nunito,
+        fontWeight = FontWeight.Bold,
+        fontSize = 28.sp,
+        lineHeight = 36.sp
+    ),
     bodyLarge = TextStyle(
         fontFamily = Roboto,
         fontWeight = FontWeight.Normal,
