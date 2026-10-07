@@ -18,21 +18,37 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import com.example.keepsafe.R
+import com.example.keepsafe.viewmodel.AppPreferences
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ManageProfileScreen(navController: NavHostController) {
-    // Local states (Ready to be swapped with ViewModel states later)
-    var firstName by remember { mutableStateOf("") }
-    var lastName by remember { mutableStateOf("") }
+    val context = LocalContext.current
+
+    var firstName by remember { mutableStateOf(AppPreferences.getUserFirstName(context)) }
+    var lastName by remember { mutableStateOf(AppPreferences.getUserLastName(context)) }
+    var email by remember { mutableStateOf(AppPreferences.getUserEmail(context)) }
     var phoneNumber by remember { mutableStateOf("") }
     var gender by remember { mutableStateOf("") }
     var dob by remember { mutableStateOf("") }
+
+    val fullName = if (lastName.isBlank()) firstName else "$firstName $lastName"
+
+    fun saveChanges() {
+        AppPreferences.saveUserProfile(
+            context = context,
+            firstName = firstName.trim(),
+            lastName = lastName.trim(),
+            email = email.trim()
+        )
+        navController.popBackStack()
+    }
 
     Scaffold(
         topBar = {
@@ -64,22 +80,22 @@ fun ManageProfileScreen(navController: NavHostController) {
 
             // 1. Profile Avatar & Info
             Image(
-                painter = painterResource(id = R.drawable.living_room), // Dummy Avatar
+                painter = painterResource(id = R.drawable.living_room),
                 contentDescription = "Profile Picture",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(80.dp)
                     .clip(CircleShape)
-                    .border(3.dp, color = MaterialTheme.colorScheme.onPrimaryContainer, CircleShape) // Pinkish border from mockup
+                    .border(3.dp, color = MaterialTheme.colorScheme.onPrimaryContainer, CircleShape)
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = "Juan Dela Cruz",
+                text = fullName,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = "Juandelacruz@pnc.ph",
+                text = email,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -99,13 +115,18 @@ fun ManageProfileScreen(navController: NavHostController) {
                 placeholder = "And your last name?"
             )
 
-            // Phone Number (Assuming you have a flag drawable, using a placeholder for now)
+            UnderlinedTextField(
+                value = email,
+                onValueChange = { email = it },
+                placeholder = "Your email address"
+            )
+
             UnderlinedTextField(
                 value = phoneNumber,
                 onValueChange = { phoneNumber = it },
                 placeholder = "Phone number",
                 leadingIcon = {
-                    Text("🇵🇭", modifier = Modifier.padding(end = 8.dp)) // Temporary emoji flag
+                    Text("🇵🇭", modifier = Modifier.padding(end = 8.dp))
                 }
             )
 
@@ -115,35 +136,29 @@ fun ManageProfileScreen(navController: NavHostController) {
                 placeholder = "Select your gender",
                 trailingIcon = {
                     Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = "Dropdown")
-                },
-                readOnly = true // Prevents typing, ideal for a dropdown trigger
+                }
             )
 
             UnderlinedTextField(
                 value = dob,
                 onValueChange = { dob = it },
-                placeholder = "What is your date of birth?",
+                placeholder = "Date of Birth",
                 trailingIcon = {
-                    Icon(Icons.Outlined.CalendarToday, contentDescription = "Calendar", modifier = Modifier.size(20.dp))
-                },
-                readOnly = true
+                    Icon(Icons.Outlined.CalendarToday, contentDescription = "Calendar")
+                }
             )
 
             Spacer(modifier = Modifier.height(48.dp))
 
-            // 3. Update Button
             Button(
-                onClick = { /* Handle Profile Update */ },
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFFDDF2A5), // Green from mockup
-                    contentColor = Color(0xFF1B1C15)
-                ),
+                onClick = { saveChanges() },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp)
+                    .height(56.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD6EB9B))
             ) {
-                Text("Update Profile", style = MaterialTheme.typography.titleMedium)
+                Text("Save Changes", color = Color.Black, fontWeight = FontWeight.Bold)
             }
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -151,22 +166,19 @@ fun ManageProfileScreen(navController: NavHostController) {
     }
 }
 
-// Reusable text field with only a bottom border
 @Composable
 fun UnderlinedTextField(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,
-    leadingIcon: @Composable (() -> Unit)? = null,
-    trailingIcon: @Composable (() -> Unit)? = null,
+    leadingIcon: (@Composable () -> Unit)? = null,
+    trailingIcon: (@Composable () -> Unit)? = null,
     readOnly: Boolean = false
 ) {
     TextField(
         value = value,
         onValueChange = onValueChange,
-        placeholder = {
-            Text(placeholder, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        },
+        placeholder = { Text(placeholder, color = Color.LightGray) },
         leadingIcon = leadingIcon,
         trailingIcon = trailingIcon,
         readOnly = readOnly,
@@ -175,9 +187,13 @@ fun UnderlinedTextField(
             focusedContainerColor = Color.Transparent,
             unfocusedContainerColor = Color.Transparent,
             disabledContainerColor = Color.Transparent,
-            focusedIndicatorColor = MaterialTheme.colorScheme.primary,
-            unfocusedIndicatorColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+            focusedIndicatorColor = MaterialTheme.colorScheme.onSurface,
+            unfocusedIndicatorColor = Color.LightGray.copy(alpha = 0.5f),
+            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+            unfocusedTextColor = MaterialTheme.colorScheme.onSurface
         ),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
     )
 }

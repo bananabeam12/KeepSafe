@@ -64,9 +64,14 @@ fun KeepSafeNavigation() {
     val navController = rememberNavController()
     val homeViewModel: HomeViewModel = viewModel()
 
-    // Check if onboarding was already completed
+    // Check onboarding & login session state
     val hasSeenOnboarding = AppPreferences.isOnboardingShown(context)
-    val startDest = if (hasSeenOnboarding) Routes.LOGIN else Routes.ONBOARDING
+    val isLoggedIn = AppPreferences.isLoggedIn(context)
+    val startDest = when {
+        !hasSeenOnboarding -> Routes.ONBOARDING
+        isLoggedIn -> Routes.HOME
+        else -> Routes.LOGIN
+    }
 
     NavHost(
         navController = navController,

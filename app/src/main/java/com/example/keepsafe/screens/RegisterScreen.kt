@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -26,10 +27,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.example.keepsafe.Routes
+import com.example.keepsafe.viewmodel.AppPreferences
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RegisterScreen(navController: NavHostController) {
+    val context = LocalContext.current
     var firstName by remember { mutableStateOf("") }
     var lastName by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -39,6 +42,39 @@ fun RegisterScreen(navController: NavHostController) {
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
     var agreedToTerms by remember { mutableStateOf(false) }
+
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    fun performRegister() {
+        if (firstName.isBlank() || email.isBlank() || password.isBlank()) {
+            errorMessage = "Please fill in all required fields."
+            return
+        }
+        if (password.length < 8) {
+            errorMessage = "Password must be at least 8 characters long."
+            return
+        }
+        if (password != confirmPassword) {
+            errorMessage = "Passwords do not match."
+            return
+        }
+        if (!agreedToTerms) {
+            errorMessage = "Please agree to the Terms of Service and Privacy Policy."
+            return
+        }
+
+        AppPreferences.registerUser(
+            context = context,
+            firstName = firstName.trim(),
+            lastName = lastName.trim(),
+            email = email.trim(),
+            pass = password
+        )
+
+        navController.navigate(Routes.HOME) {
+            popUpTo(Routes.LOGIN) { inclusive = true }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -70,18 +106,33 @@ fun RegisterScreen(navController: NavHostController) {
                 modifier = Modifier.padding(vertical = 32.dp)
             )
 
+            errorMessage?.let { error ->
+                Text(
+                    text = error,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+            }
+
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 OutlinedTextField(
                     value = firstName,
-                    onValueChange = { firstName = it },
-                    label = { Text("First Name") },
+                    onValueChange = {
+                        firstName = it
+                        errorMessage = null
+                    },
+                    label = { Text("First Name *") },
                     placeholder = { Text("John") },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp)
                 )
                 OutlinedTextField(
                     value = lastName,
-                    onValueChange = { lastName = it },
+                    onValueChange = {
+                        lastName = it
+                        errorMessage = null
+                    },
                     label = { Text("Last Name") },
                     placeholder = { Text("Doe") },
                     modifier = Modifier.weight(1f),
@@ -93,8 +144,11 @@ fun RegisterScreen(navController: NavHostController) {
 
             OutlinedTextField(
                 value = email,
-                onValueChange = { email = it },
-                label = { Text("E-mail") },
+                onValueChange = {
+                    email = it
+                    errorMessage = null
+                },
+                label = { Text("E-mail *") },
                 placeholder = { Text("Enter your email") },
                 leadingIcon = {
                     Icon(
@@ -111,8 +165,11 @@ fun RegisterScreen(navController: NavHostController) {
 
             OutlinedTextField(
                 value = password,
-                onValueChange = { password = it },
-                label = { Text("Password") },
+                onValueChange = {
+                    password = it
+                    errorMessage = null
+                },
+                label = { Text("Password *") },
                 placeholder = { Text("********") },
                 leadingIcon = {
                     Icon(
@@ -142,8 +199,11 @@ fun RegisterScreen(navController: NavHostController) {
 
             OutlinedTextField(
                 value = confirmPassword,
-                onValueChange = { confirmPassword = it },
-                label = { Text("Confirm Password") },
+                onValueChange = {
+                    confirmPassword = it
+                    errorMessage = null
+                },
+                label = { Text("Confirm Password *") },
                 placeholder = { Text("********") },
                 leadingIcon = {
                     Icon(
@@ -166,7 +226,7 @@ fun RegisterScreen(navController: NavHostController) {
             Spacer(modifier = Modifier.height(32.dp))
 
             Button(
-                onClick = { navController.navigate(Routes.HOME) },
+                onClick = { performRegister() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
@@ -184,7 +244,10 @@ fun RegisterScreen(navController: NavHostController) {
             ) {
                 Checkbox(
                     checked = agreedToTerms,
-                    onCheckedChange = { agreedToTerms = it },
+                    onCheckedChange = {
+                        agreedToTerms = it
+                        errorMessage = null
+                    },
                     colors = CheckboxDefaults.colors(checkedColor = Color(0xFF3C4C0E))
                 )
 

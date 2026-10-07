@@ -4,7 +4,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
@@ -13,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -21,16 +21,39 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.example.keepsafe.R
 import com.example.keepsafe.Routes
+import com.example.keepsafe.viewmodel.AppPreferences
+import com.example.keepsafe.viewmodel.LoginResult
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(navController: NavHostController) {
+    val context = LocalContext.current
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    Scaffold(
+    fun performLogin() {
+        if (email.isBlank() || password.isBlank()) {
+            errorMessage = "Please enter both email and password."
+            return
+        }
 
-    ) { padding ->
+        when (AppPreferences.validateLogin(context, email, password)) {
+            LoginResult.Success -> {
+                navController.navigate(Routes.HOME) {
+                    popUpTo(Routes.LOGIN) { inclusive = true }
+                }
+            }
+            LoginResult.NotRegistered -> {
+                errorMessage = "No registered account found. Please register first!"
+            }
+            LoginResult.WrongCredentials -> {
+                errorMessage = "Incorrect email or password. Please try again."
+            }
+        }
+    }
+
+    Scaffold { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -54,11 +77,23 @@ fun LoginScreen(navController: NavHostController) {
                 modifier = Modifier.padding(bottom = 16.dp)
             )
 
+            errorMessage?.let { error ->
+                Text(
+                    text = error,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+            }
+
             OutlinedTextField(
                 value = email,
-                onValueChange = { email = it },
+                onValueChange = {
+                    email = it
+                    errorMessage = null
+                },
                 label = { Text("E-mail") },
-                placeholder = { Text("Enter your email") },
+                placeholder = { Text("Enter your registered email") },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Email,
@@ -67,14 +102,18 @@ fun LoginScreen(navController: NavHostController) {
                     )
                 },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(12.dp),
+                isError = errorMessage != null
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
             OutlinedTextField(
                 value = password,
-                onValueChange = { password = it },
+                onValueChange = {
+                    password = it
+                    errorMessage = null
+                },
                 label = { Text("Password") },
                 placeholder = { Text("Enter your password") },
                 leadingIcon = {
@@ -87,13 +126,14 @@ fun LoginScreen(navController: NavHostController) {
                 visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
+                isError = errorMessage != null,
                 trailingIcon = {
                     TextButton(onClick = { /* Forgot Password */ }) {
                         Text(
                             "Forgot Password?",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF3C4C0E) // Darker high-contrast green
+                            color = Color(0xFF3C4C0E)
                         )
                     }
                 }
@@ -102,7 +142,7 @@ fun LoginScreen(navController: NavHostController) {
             Spacer(modifier = Modifier.height(32.dp))
 
             Button(
-                onClick = { navController.navigate(Routes.HOME) },
+                onClick = { performLogin() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
@@ -119,7 +159,12 @@ fun LoginScreen(navController: NavHostController) {
             Spacer(modifier = Modifier.height(24.dp))
 
             OutlinedButton(
-                onClick = { /* Google Login */ },
+                onClick = {
+                    AppPreferences.registerUser(context, "Google User", "", "user@gmail.com", "password123")
+                    navController.navigate(Routes.HOME) {
+                        popUpTo(Routes.LOGIN) { inclusive = true }
+                    }
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
@@ -157,7 +202,7 @@ fun LoginScreen(navController: NavHostController) {
                     Text(
                         "Register",
                         fontWeight = FontWeight.ExtraBold,
-                        color = Color(0xFF3C4C0E) // Darker high-contrast green
+                        color = Color(0xFF3C4C0E)
                     )
                 }
             }

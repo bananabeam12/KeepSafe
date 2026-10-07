@@ -38,6 +38,10 @@ android {
 }
 
 dependencies {
+    // Retrofit & Gson (Week 14)
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+
     implementation("androidx.compose.material:material-icons-extended:1.6.3")
     implementation("androidx.navigation:navigation-compose:2.7.7") // Use the latest stable version
     implementation(platform(libs.androidx.compose.bom))

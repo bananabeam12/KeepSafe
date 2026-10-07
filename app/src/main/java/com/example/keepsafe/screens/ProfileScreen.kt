@@ -2,7 +2,6 @@ package com.example.keepsafe.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -20,23 +19,33 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import com.example.keepsafe.R
-import androidx.compose.ui.draw.scale
 import com.example.keepsafe.Routes
+import com.example.keepsafe.viewmodel.AppPreferences
 
 @Composable
 fun ProfileScreen(
     navController: NavHostController
 ) {
+    val context = LocalContext.current
     var isFaceIdEnabled by remember { mutableStateOf(false) }
+
+    val firstName = AppPreferences.getUserFirstName(context)
+    val lastName = AppPreferences.getUserLastName(context)
+    val email = AppPreferences.getUserEmail(context)
+
+    val fullName = if (lastName.isBlank()) firstName else "$firstName $lastName"
+    val handle = "@${email.substringBefore("@")}"
 
     Scaffold(
         bottomBar = { AppBottomNavigationBar(navController = navController) },
@@ -51,11 +60,11 @@ fun ProfileScreen(
         ) {
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 1. Profile Header Card (Green)
+            // 1. Profile Header Card
             Card(
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFFDDF2A5) // Soft green from the mockup
+                    containerColor = Color(0xFFDDF2A5)
                 ),
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -65,9 +74,8 @@ fun ProfileScreen(
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Avatar Image (Replace R.drawable.avatar with your actual image asset)
                     Image(
-                        painter = painterResource(id = R.drawable.living_room), // Dummy placeholder
+                        painter = painterResource(id = R.drawable.living_room),
                         contentDescription = "Profile Picture",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
@@ -80,13 +88,13 @@ fun ProfileScreen(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Juan Dela Cruz",
+                            text = fullName,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF1B1C15)
                         )
                         Text(
-                            text = "@juandelacruz",
+                            text = handle,
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFF4A4E3A)
                         )
@@ -118,7 +126,7 @@ fun ProfileScreen(
                         icon = Icons.Outlined.Person,
                         title = "My Account",
                         subtitle = "Make changes to your account",
-                        onClick = { /* Handle My Account */ },
+                        onClick = { navController.navigate(Routes.MANAGE_PROFILE) },
                         trailingContent = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
@@ -148,7 +156,7 @@ fun ProfileScreen(
                                     uncheckedThumbColor = Color.White,
                                     uncheckedTrackColor = Color.LightGray
                                 ),
-                                modifier = Modifier.scale(0.8f) // Slightly scale down to match mockup
+                                modifier = Modifier.scale(0.8f)
                             )
                         }
                     )
@@ -168,8 +176,13 @@ fun ProfileScreen(
                         iconTint = Color(0xFFE53935),
                         title = "Log out",
                         titleColor = Color(0xFFE53935),
-                        subtitle = "Further secure your account for safety",
-                        onClick = { /* Handle Log out */ },
+                        subtitle = "Log out of your KeepSafe session",
+                        onClick = {
+                            AppPreferences.clearUserSession(context)
+                            navController.navigate(Routes.LOGIN) {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        },
                         trailingContent = {
                             Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = Color.LightGray)
                         }
@@ -179,15 +192,7 @@ fun ProfileScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 3. "More" Section
-            Text(
-                text = "More",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-
+            // 3. More Options
             Card(
                 shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -195,19 +200,22 @@ fun ProfileScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(vertical = 8.dp)) {
+
                     ProfileMenuItem(
-                        icon = Icons.Outlined.Notifications,
+                        icon = Icons.Outlined.HelpOutline,
                         title = "Help & Support",
-                        onClick = { /* Handle Help & Support */ },
+                        subtitle = "Get assistance with your app",
+                        onClick = { /* Handle Help */ },
                         trailingContent = {
                             Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = Color.LightGray)
                         }
                     )
 
                     ProfileMenuItem(
-                        icon = Icons.Outlined.FavoriteBorder,
+                        icon = Icons.Outlined.Info,
                         title = "About App",
-                        onClick = { /* Handle About App */ },
+                        subtitle = "Version 1.0.0",
+                        onClick = { /* Handle About */ },
                         trailingContent = {
                             Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null, tint = Color.LightGray)
                         }
@@ -220,16 +228,13 @@ fun ProfileScreen(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Reusable Component for List Items
-// ---------------------------------------------------------------------------
 @Composable
 fun ProfileMenuItem(
     icon: ImageVector,
-    iconTint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    iconTint: Color = MaterialTheme.colorScheme.onSurface,
     title: String,
     titleColor: Color = MaterialTheme.colorScheme.onSurface,
-    subtitle: String? = null,
+    subtitle: String,
     onClick: () -> Unit,
     trailingContent: @Composable () -> Unit
 ) {
@@ -240,45 +245,29 @@ fun ProfileMenuItem(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Subtle circular background for the icon
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = title,
-                tint = iconTint,
-                modifier = Modifier.size(20.dp)
-            )
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = title,
+            tint = iconTint,
+            modifier = Modifier.size(24.dp)
+        )
 
         Spacer(modifier = Modifier.width(16.dp))
 
-        // Texts
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = titleColor
             )
-            if (subtitle != null) {
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    lineHeight = 14.sp
-                )
-            }
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
 
-        Spacer(modifier = Modifier.width(8.dp))
-
-        // Trailing element (Chevron, Switch, Warning Icon, etc.)
         trailingContent()
     }
-}   
+}

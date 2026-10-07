@@ -45,6 +45,7 @@ import androidx.activity.result.launch
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.navigation.compose.currentBackStackEntryAsState
+import com.example.keepsafe.viewmodel.AppPreferences
 
 @Composable
 fun HomeScreen(
@@ -143,8 +144,10 @@ fun HomeScreen(
 
 @Composable
 fun HomeHeader() {
+    val context = LocalContext.current
+    val userName = AppPreferences.getUserFirstName(context)
     Column {
-        Text(text = "Hi Juan!", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.onBackground)
+        Text(text = "Hi $userName!", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.onBackground)
         Text(text = "take a breath, your home is sorted", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
