@@ -9,6 +9,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.keepsafe.data.ItemRepository
+import com.example.keepsafe.data.Resource
+import com.example.keepsafe.data.remote.KeepSafeRetrofitClient
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -39,9 +41,15 @@ data class KeepSafeItem(
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val repository = ItemRepository(application)
+    private val repository = ItemRepository(
+        context = application,
+        apiService = KeepSafeRetrofitClient.apiService
+    )
 
     var isLoading by mutableStateOf(false)
+        private set
+
+    var errorMessage by mutableStateOf<String?>(null)
         private set
 
     var selectedCategory by mutableStateOf("Recents")
@@ -58,22 +66,53 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Loads locally persisted items asynchronously using Coroutines.
+     * Loads locally persisted items from ItemDao asynchronously using Coroutines (Dispatchers.IO).
+     * Based on Weeks 11 & 13 of the course module.
      */
     private fun loadSavedItems() {
         viewModelScope.launch {
             isLoading = true
-            val loadedItems = repository.loadItems()
+            val loadedItems = repository.dao.getAllItems()
             _allItems.clear()
             _allItems.addAll(loadedItems)
             isLoading = false
         }
     }
 
-    private fun persistItems() {
-        val currentList = _allItems.toList()
+    /**
+     * Fetches a live dummy item from JSONPlaceholder REST API via Retrofit and Coroutines,
+     * and inserts it into local storage via ItemDao (`dao.insertItem()`).
+     * Based on Week 14 & 15 API requirements.
+     */
+    fun fetchApiItem(onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
         viewModelScope.launch {
-            repository.saveItems(currentList)
+            isLoading = true
+            errorMessage = null
+            when (val result = repository.fetchAndAddApiItem()) {
+                is Resource.Success -> {
+                    result.data?.let { newItem ->
+                        if (_allItems.none { it.id == newItem.id }) {
+                            _allItems.add(0, newItem)
+                        }
+                    }
+                    isLoading = false
+                    onResult(true, null)
+                }
+                is Resource.Error -> {
+                    errorMessage = result.message
+                    isLoading = false
+                    onResult(false, result.message)
+                }
+                is Resource.Loading -> {
+                    // no-op
+                }
+            }
+        }
+    }
+
+    private fun persistItem(item: KeepSafeItem) {
+        viewModelScope.launch {
+            repository.dao.insertItem(item)
         }
     }
 
@@ -146,12 +185,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 ItemHistoryLog(action = "Retrieved item for use", timestamp = currentTime)
             ) + item.historyLogs
 
-            _allItems[index] = item.copy(
+            val updatedItem = item.copy(
                 isRetrieved = true,
                 lastLogged = currentTime,
                 historyLogs = updatedHistory
             )
-            persistItems()
+            _allItems[index] = updatedItem
+            persistItem(updatedItem)
         }
     }
 
@@ -167,18 +207,19 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 ItemHistoryLog(action = "Put back in exact same location", timestamp = currentTime)
             ) + item.historyLogs
 
-            _allItems[index] = item.copy(
+            val updatedItem = item.copy(
                 isRetrieved = false,
                 lastLogged = currentTime,
                 historyLogs = updatedHistory
             )
-            persistItems()
+            _allItems[index] = updatedItem
+            persistItem(updatedItem)
         }
     }
 
     fun addItem(newItem: KeepSafeItem) {
         _allItems.add(0, newItem)
-        persistItems()
+        persistItem(newItem)
     }
 
     // Relocation Flow Functions
@@ -200,7 +241,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 ItemHistoryLog(action = "Relocated to $newCategory", timestamp = currentTime)
             ) + item.historyLogs
 
-            _allItems[index] = item.copy(
+            val updatedItem = item.copy(
                 description = newDescription,
                 category = newCategory,
                 itemPlaceBitmap = capturedItemImage ?: item.itemPlaceBitmap,
@@ -209,7 +250,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 lastLogged = currentTime,
                 historyLogs = updatedHistory
             )
-            persistItems()
+            _allItems[index] = updatedItem
+            persistItem(updatedItem)
         }
 
         relocatingItemId = null

@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import com.example.keepsafe.R
+import com.example.keepsafe.data.local.ItemDao
+import com.example.keepsafe.data.remote.KeepSafeApiService
 import com.example.keepsafe.viewmodel.ItemHistoryLog
 import com.example.keepsafe.viewmodel.KeepSafeItem
 import kotlinx.coroutines.Dispatchers
@@ -14,11 +16,12 @@ import java.io.File
 import java.io.FileOutputStream
 
 /**
- * Repository pattern implementation for local JSON file storage and image caching
- * using Kotlin Coroutines (Dispatchers.IO).
+ * Repository pattern using ItemDao and Kotlin Coroutines (Dispatchers.IO).
+ * Based on Weeks 11 & 13 of the course module.
  */
 class ItemRepository(
-    private val context: Context
+    private val context: Context,
+    private val apiService: KeepSafeApiService
 ) {
     private val jsonFile: File
         get() = File(context.filesDir, "keepsafe_items.json")
@@ -26,15 +29,24 @@ class ItemRepository(
     private val imageDir: File
         get() = File(context.filesDir, "item_images").apply { if (!exists()) mkdirs() }
 
-    /**
-     * Loads items asynchronously from local disk storage using Coroutines.
-     * Filters out any previously cached remote/API items so only local items are shown.
-     */
-    suspend fun loadItems(): List<KeepSafeItem> = withContext(Dispatchers.IO) {
+    // DAO instance coordinating local data access with Coroutines
+    val dao = ItemDao(
+        context = context,
+        loadDiskItems = { loadItemsFromDisk() },
+        saveDiskItems = { items -> saveItemsToDisk(items) }
+    )
+
+    suspend fun loadItems(): List<KeepSafeItem> = dao.getAllItems()
+
+    suspend fun saveItem(item: KeepSafeItem) = dao.insertItem(item)
+
+    suspend fun saveItems(items: List<KeepSafeItem>) = saveItemsToDisk(items)
+
+    private suspend fun loadItemsFromDisk(): List<KeepSafeItem> = withContext(Dispatchers.IO) {
         if (!jsonFile.exists()) {
-            val defaultItems = getDefaultItems()
-            saveItemsInternal(defaultItems)
-            return@withContext defaultItems
+            val emptyList = emptyList<KeepSafeItem>()
+            saveItemsToDisk(emptyList)
+            return@withContext emptyList
         }
 
         try {
@@ -48,8 +60,8 @@ class ItemRepository(
                 val title = obj.getString("title")
                 val description = obj.getString("description")
                 val category = obj.getString("category")
-                val itemPlaceImageRes = obj.optInt("itemPlaceImageRes", R.drawable.passport_binder)
-                val roomSectionImageRes = obj.optInt("roomSectionImageRes", R.drawable.bedroom)
+                val itemPlaceImageRes = obj.optInt("itemPlaceImageRes", 0)
+                val roomSectionImageRes = obj.optInt("roomSectionImageRes", 0)
                 val lastLogged = obj.optString("lastLogged", "")
                 val isRetrieved = obj.optBoolean("isRetrieved", false)
 
@@ -95,32 +107,17 @@ class ItemRepository(
                     )
                 )
             }
-
-            // Permanently filter out any API / remote items from local storage
-            val localOnlyItems = items.filter { !it.id.startsWith("remote_") && !it.description.contains("JSONPlaceholder") }
-            if (localOnlyItems.isEmpty()) {
-                val defaults = getDefaultItems()
-                saveItemsInternal(defaults)
-                defaults
-            } else {
-                // Re-save without the remote items so cache is cleaned
-                saveItemsInternal(localOnlyItems)
-                localOnlyItems
-            }
+            // Filter out old default seed items ("1", "2", "3") and remote items
+            val cleanItems = items.filter { it.id != "1" && it.id != "2" && it.id != "3" && !it.id.startsWith("remote_") }
+            saveItemsToDisk(cleanItems)
+            cleanItems
         } catch (e: Exception) {
             e.printStackTrace()
-            getDefaultItems()
+            emptyList()
         }
     }
 
-    /**
-     * Saves items asynchronously to local disk storage using Coroutines.
-     */
-    suspend fun saveItems(items: List<KeepSafeItem>) = withContext(Dispatchers.IO) {
-        saveItemsInternal(items)
-    }
-
-    private fun saveItemsInternal(items: List<KeepSafeItem>) {
+    private suspend fun saveItemsToDisk(items: List<KeepSafeItem>) = withContext(Dispatchers.IO) {
         val jsonArray = JSONArray()
 
         for (item in items) {
@@ -166,6 +163,37 @@ class ItemRepository(
         jsonFile.writeText(jsonArray.toString())
     }
 
+    /**
+     * Fetches a live dummy item from JSONPlaceholder REST API via Retrofit and Coroutines,
+     * and inserts it into local storage via ItemDao (`dao.insertItem()`).
+     */
+    suspend fun fetchAndAddApiItem(): Resource<KeepSafeItem> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getSingleTodo()
+            if (response.isSuccessful && response.body() != null) {
+                val remote = response.body()!!
+                val formattedTitle = remote.title.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+                val newItem = KeepSafeItem(
+                    id = "api_${remote.id}_${System.currentTimeMillis()}",
+                    title = "API: $formattedTitle",
+                    description = "Fetched live from JSONPlaceholder REST API (/todos/1)",
+                    category = "Living Room",
+                    itemPlaceImageRes = R.drawable.keys,
+                    roomSectionImageRes = R.drawable.living_room,
+                    lastLogged = "Fetched via Retrofit API",
+                    historyLogs = listOf(ItemHistoryLog("Fetched from REST API endpoint /todos/1", "Today")),
+                    isRetrieved = remote.completed
+                )
+                dao.insertItem(newItem)
+                Resource.Success(newItem)
+            } else {
+                Resource.Error("API error: ${response.message()}")
+            }
+        } catch (e: Exception) {
+            Resource.Error(e.localizedMessage ?: "Network error occurred")
+        }
+    }
+
     private fun saveBitmapToFile(bitmap: Bitmap, file: File) {
         try {
             FileOutputStream(file).use { out ->
@@ -174,49 +202,5 @@ class ItemRepository(
         } catch (e: Exception) {
             e.printStackTrace()
         }
-    }
-
-    private fun getDefaultItems(): List<KeepSafeItem> {
-        return listOf(
-            KeepSafeItem(
-                id = "1",
-                title = "Passport Binder",
-                description = "Top shelf of the bedroom closet",
-                category = "Bed Room",
-                itemPlaceImageRes = R.drawable.passport_binder,
-                roomSectionImageRes = R.drawable.bedroom,
-                lastLogged = "Today, 4 hours ago",
-                historyLogs = listOf(
-                    ItemHistoryLog("Moved from office desk to bedroom closet", "Today · 12:30 PM"),
-                    ItemHistoryLog("Stored inside home office drawer", "Yesterday · 04:15 PM")
-                )
-            ),
-            KeepSafeItem(
-                id = "2",
-                title = "Spare House Keys",
-                description = "Hanging on the entryway key hook",
-                category = "Living Room",
-                itemPlaceImageRes = R.drawable.keys,
-                roomSectionImageRes = R.drawable.living_room,
-                lastLogged = "Today, 2 hours ago",
-                historyLogs = listOf(
-                    ItemHistoryLog("Hung on entryway key hook", "Today · 07:52 AM"),
-                    ItemHistoryLog("Left on kitchen counter", "Yesterday · 09:10 PM")
-                )
-            ),
-            KeepSafeItem(
-                id = "3",
-                title = "First Aid & Daily Medications",
-                description = "Top shelf of the bathroom medicine cabinet",
-                category = "Bathroom",
-                itemPlaceImageRes = R.drawable.medicine_cabinet,
-                roomSectionImageRes = R.drawable.bathroom,
-                lastLogged = "Today, 1 hour ago",
-                historyLogs = listOf(
-                    ItemHistoryLog("Placed back into medicine cabinet", "Today · 08:30 AM"),
-                    ItemHistoryLog("Used during morning routine", "Today · 07:15 AM")
-                )
-            )
-        )
     }
 }

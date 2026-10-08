@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
@@ -125,7 +126,7 @@ fun HomeScreen(
         ) {
             item {
                 Spacer(modifier = Modifier.height(24.dp))
-                HomeHeader()
+                HomeHeader(viewModel = viewModel)
                 Spacer(modifier = Modifier.height(20.dp))
                 SearchAndFilterSection(viewModel = viewModel)
                 Spacer(modifier = Modifier.height(8.dp))
@@ -143,12 +144,52 @@ fun HomeScreen(
 }
 
 @Composable
-fun HomeHeader() {
+fun HomeHeader(viewModel: HomeViewModel) {
     val context = LocalContext.current
     val userName = AppPreferences.getUserFirstName(context)
-    Column {
-        Text(text = "Hi $userName!", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.onBackground)
-        Text(text = "take a breath, your home is sorted", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    var successMessage by remember { mutableStateOf<String?>(null) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Hi $userName!", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.onBackground)
+                Text(text = "take a breath, your home is sorted", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Download API Item Button
+            IconButton(
+                onClick = {
+                    viewModel.fetchApiItem { success, error ->
+                        successMessage = if (success) "API item downloaded!" else error
+                    }
+                }
+            ) {
+                if (viewModel.isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onSurface)
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Download,
+                        contentDescription = "Download Item from API",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+        }
+
+        successMessage?.let { msg ->
+            Text(
+                text = msg,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (viewModel.errorMessage != null) MaterialTheme.colorScheme.error else Color(0xFF3C4C0E)
+            )
+        }
     }
 }
 
