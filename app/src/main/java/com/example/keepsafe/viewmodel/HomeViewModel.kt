@@ -61,6 +61,9 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val _allItems = mutableStateListOf<KeepSafeItem>()
     val allItems: List<KeepSafeItem> get() = _allItems
 
+    var apiState by mutableStateOf<Resource<List<KeepSafeItem>>?>(null)
+        private set
+
     init {
         loadSavedItems()
     }
@@ -80,32 +83,49 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Fetches a live dummy item from JSONPlaceholder REST API via Retrofit and Coroutines,
-     * and inserts it into local storage via ItemDao (`dao.insertItem()`).
-     * Based on Week 14 & 15 API requirements.
+     * Fetches live items from MockAPI via Retrofit and Coroutines,
+     * checks if items are already present inside the coroutine, and updates Resource state (Loading, Success, Error).
      */
-    fun fetchApiItem(onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
+    fun fetchApiItems() {
         viewModelScope.launch {
             isLoading = true
+            apiState = Resource.Loading()
             errorMessage = null
-            when (val result = repository.fetchAndAddApiItem()) {
+
+            when (val result = repository.fetchAndAddApiItems()) {
                 is Resource.Success -> {
-                    result.data?.let { newItem ->
-                        if (_allItems.none { it.id == newItem.id }) {
+                    val addedItems = result.data ?: emptyList()
+                    for (newItem in addedItems) {
+                        if (_allItems.none { it.id == newItem.id || it.title.equals(newItem.title, ignoreCase = true) }) {
                             _allItems.add(0, newItem)
                         }
                     }
                     isLoading = false
-                    onResult(true, null)
+                    apiState = Resource.Success(addedItems)
                 }
                 is Resource.Error -> {
-                    errorMessage = result.message
                     isLoading = false
-                    onResult(false, result.message)
+                    errorMessage = result.message
+                    apiState = Resource.Error(result.message ?: "Failed to fetch items")
                 }
                 is Resource.Loading -> {
-                    // no-op
+                    apiState = Resource.Loading()
                 }
+            }
+        }
+    }
+
+    fun resetApiState() {
+        apiState = null
+    }
+
+    fun fetchApiItem(onResult: (Boolean, String?) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            fetchApiItems()
+            when (val state = apiState) {
+                is Resource.Success -> onResult(true, null)
+                is Resource.Error -> onResult(false, state.message)
+                else -> {}
             }
         }
     }

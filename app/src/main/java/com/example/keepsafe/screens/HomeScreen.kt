@@ -32,11 +32,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.example.keepsafe.Routes
+import com.example.keepsafe.data.Resource
+import com.example.keepsafe.viewmodel.AppPreferences
 import com.example.keepsafe.viewmodel.HomeViewModel
 import com.example.keepsafe.viewmodel.KeepSafeItem
 import android.graphics.Bitmap
@@ -46,7 +49,6 @@ import androidx.activity.result.launch
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.navigation.compose.currentBackStackEntryAsState
-import com.example.keepsafe.viewmodel.AppPreferences
 
 @Composable
 fun HomeScreen(
@@ -93,6 +95,15 @@ fun HomeScreen(
             itemCameraLauncher.launch(null) // Now it can find and trigger the launcher!
         }
     }
+
+    // Auto-clear Resource.Success after a brief display moment
+    LaunchedEffect(viewModel.apiState) {
+        if (viewModel.apiState is Resource.Success) {
+            kotlinx.coroutines.delay(1500)
+            viewModel.resetApiState()
+        }
+    }
+
     Scaffold(
         floatingActionButton = {
             HomeFloatingActionButton(
@@ -132,8 +143,18 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            items(viewModel.filteredItems) { item ->
-                KeepSafeItemCard(item = item, navController = navController)
+            val apiState = viewModel.apiState
+            if (apiState != null) {
+                item {
+                    ApiResourceStateCenterView(
+                        apiState = apiState,
+                        onRetry = { viewModel.fetchApiItems() }
+                    )
+                }
+            } else {
+                items(viewModel.filteredItems) { item ->
+                    KeepSafeItemCard(item = item, navController = navController)
+                }
             }
 
             item {
@@ -147,48 +168,92 @@ fun HomeScreen(
 fun HomeHeader(viewModel: HomeViewModel) {
     val context = LocalContext.current
     val userName = AppPreferences.getUserFirstName(context)
-    var successMessage by remember { mutableStateOf<String?>(null) }
+    val apiState = viewModel.apiState
 
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = "Hi $userName!", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.onBackground)
-                Text(text = "take a breath, your home is sorted", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Download API Item Button
-            IconButton(
-                onClick = {
-                    viewModel.fetchApiItem { success, error ->
-                        successMessage = if (success) "API item downloaded!" else error
-                    }
-                }
-            ) {
-                if (viewModel.isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onSurface)
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.Download,
-                        contentDescription = "Download Item from API",
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = "Hi $userName!", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.onBackground)
+            Text(text = "take a breath, your home is sorted", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
 
-        successMessage?.let { msg ->
-            Text(
-                text = msg,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (viewModel.errorMessage != null) MaterialTheme.colorScheme.error else Color(0xFF3C4C0E)
-            )
+        Spacer(modifier = Modifier.width(8.dp))
+
+        // Download API Item Button
+        IconButton(
+            onClick = { viewModel.fetchApiItems() }
+        ) {
+            if (apiState is Resource.Loading) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onSurface)
+            } else {
+                Icon(
+                    imageVector = Icons.Default.Download,
+                    contentDescription = "Download Items from API",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ApiResourceStateCenterView(
+    apiState: Resource<List<KeepSafeItem>>,
+    onRetry: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(260.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.padding(24.dp)
+        ) {
+            when (apiState) {
+                is Resource.Loading -> {
+                    CircularProgressIndicator(
+                        color = Color(0xFF3C4C0E),
+                        strokeWidth = 3.dp,
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Text(
+                        text = "Syncing items...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                is Resource.Success -> {
+                    Text(
+                        text = "Items updated successfully!",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF3C4C0E)
+                    )
+                }
+                is Resource.Error -> {
+                    Text(
+                        text = apiState.message ?: "Couldn't sync items. Please try again.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    Button(
+                        onClick = onRetry,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD6EB9B)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Retry", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
     }
 }

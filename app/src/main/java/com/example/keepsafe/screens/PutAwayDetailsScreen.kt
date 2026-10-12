@@ -1,5 +1,12 @@
 package com.example.keepsafe.screens
 
+import android.app.Activity
+import android.content.Intent
+import android.speech.RecognizerIntent
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -12,11 +19,12 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Label
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Label
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -34,7 +43,116 @@ import com.example.keepsafe.Routes
 import com.example.keepsafe.viewmodel.HomeViewModel
 import com.example.keepsafe.viewmodel.ItemHistoryLog
 import com.example.keepsafe.viewmodel.KeepSafeItem
+import org.json.JSONObject
 import java.util.UUID
+
+data class ParsedVoiceData(
+    val itemName: String,
+    val category: String,
+    val transcript: String
+)
+
+fun parseVoiceInput(spokenText: String): ParsedVoiceData {
+    val cleanedText = spokenText.trim()
+    if (cleanedText.isEmpty()) return ParsedVoiceData("", "", "")
+
+    val lower = cleanedText.lowercase()
+
+    // 1. Extract Category (Room)
+    var extractedCategory = ""
+    val roomCategories = listOf(
+        "masters bedroom" to "Masters bedroom",
+        "master's bedroom" to "Masters bedroom",
+        "master bedroom" to "Masters bedroom",
+        "living room" to "Living room",
+        "kitchen" to "Kitchen",
+        "bedroom" to "Bedroom",
+        "bathroom" to "Bathroom",
+        "dining room" to "Dining room",
+        "office" to "Office",
+        "study room" to "Office",
+        "garage" to "Garage",
+        "balcony" to "Balcony",
+        "patio" to "Patio",
+        "porch" to "Porch",
+        "basement" to "Basement",
+        "attic" to "Attic",
+        "hallway" to "Hallway",
+        "foyer" to "Hallway",
+        "entryway" to "Hallway",
+        "laundry room" to "Laundry room",
+        "laundry" to "Laundry room",
+        "storage room" to "Storage room",
+        "closet" to "Closet"
+    )
+
+    for ((key, display) in roomCategories) {
+        if (lower.contains(key)) {
+            extractedCategory = display
+            break
+        }
+    }
+
+    // 2. Extract Item Name (Title)
+    val leadingPatterns = listOf(
+        Regex("^(?i)(i put my|i placed my|i am putting my|i'm putting my|putting my|hanging my|left my|stored my|stashed my|i left my|i stored my|my|the|a|an)\\s+"),
+        Regex("^(?i)(i put|i placed|i am putting|i'm putting|putting|hanging|left|stored|stashed)\\s+")
+    )
+
+    var itemCandidate = cleanedText
+    for (pattern in leadingPatterns) {
+        val match = pattern.find(itemCandidate)
+        if (match != null) {
+            itemCandidate = itemCandidate.substring(match.range.last + 1).trim()
+            break
+        }
+    }
+
+    val locationPrepositions = listOf(
+        " is on the ", " is on ", " is in the ", " is in ", " is inside ", " is at the ", " is at ",
+        " is under ", " is above ", " is near ", " is next to ", " on the ", " on ", " in the ", " in ",
+        " inside ", " at the ", " at ", " under ", " above ", " near ", " next to "
+    )
+
+    val lowerCandidate = itemCandidate.lowercase()
+    var lowestIndex = -1
+
+    for (prep in locationPrepositions) {
+        val idx = lowerCandidate.indexOf(prep)
+        if (idx != -1 && (lowestIndex == -1 || idx < lowestIndex)) {
+            lowestIndex = idx
+        }
+    }
+
+    var extractedItemName = if (lowestIndex > 0) {
+        itemCandidate.substring(0, lowestIndex).trim()
+    } else {
+        itemCandidate
+    }
+
+    extractedItemName = extractedItemName.replace(Regex("[.,!?]$"), "").trim()
+
+    if (extractedItemName.isNotEmpty()) {
+        extractedItemName = extractedItemName.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+    }
+
+    val formattedTranscript = cleanedText.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+
+    return ParsedVoiceData(
+        itemName = extractedItemName,
+        category = extractedCategory,
+        transcript = formattedTranscript
+    )
+}
+
+fun parseVoiceInputToJson(spokenText: String): String {
+    val parsed = parseVoiceInput(spokenText)
+    val json = JSONObject()
+    json.put("title", parsed.itemName)
+    json.put("category", parsed.category)
+    json.put("description", parsed.transcript)
+    return json.toString()
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,6 +160,8 @@ fun PutAwayDetailsScreen(
     navController: NavHostController,
     viewModel: HomeViewModel
 ) {
+    val context = LocalContext.current
+
     // Check if we are relocating an existing item to pre-fill data
     val existingItem = viewModel.relocatingItemId?.let { viewModel.getItemById(it) }
 
@@ -52,6 +172,49 @@ fun PutAwayDetailsScreen(
 
     val itemBitmap = viewModel.capturedItemImage
     val roomBitmap = viewModel.capturedRoomImage
+
+    // Voice recognition launcher
+    val speechRecognizerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spokenText = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+            if (!spokenText.isNullOrBlank()) {
+                val jsonResult = parseVoiceInputToJson(spokenText)
+                try {
+                    val jsonObject = JSONObject(jsonResult)
+                    val parsedTitle = jsonObject.optString("title", "")
+                    val parsedCategory = jsonObject.optString("category", "")
+                    val parsedDescription = jsonObject.optString("description", "")
+
+                    if (parsedTitle.isNotBlank()) {
+                        title = parsedTitle
+                    }
+                    if (parsedCategory.isNotBlank()) {
+                        category = parsedCategory
+                    }
+                    if (parsedDescription.isNotBlank()) {
+                        transcript = parsedDescription
+                    }
+                    Toast.makeText(context, "Voice input processed!", Toast.LENGTH_SHORT).show()
+                } catch (_: Exception) {
+                }
+            }
+        }
+    }
+
+    fun startVoiceInput() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Describe the item and where you placed it...")
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+        }
+        try {
+            speechRecognizerLauncher.launch(intent)
+        } catch (_: Exception) {
+            Toast.makeText(context, "Voice recognition is not available on this device", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -86,16 +249,38 @@ fun PutAwayDetailsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
-                        onClick = { /* Handle retry */ },
-                        modifier = Modifier.size(48.dp).border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), CircleShape)
+                        onClick = {
+                            title = ""
+                            category = ""
+                            transcript = ""
+                        },
+                        modifier = Modifier
+                            .size(56.dp)
+                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), CircleShape)
                     ) {
-                        Icon(Icons.Outlined.Refresh, contentDescription = "Retry", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Outlined.Refresh, contentDescription = "Reset Fields", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(26.dp))
                     }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        val barHeights = listOf(16.dp, 28.dp, 44.dp, 28.dp, 16.dp)
-                        barHeights.forEach { height ->
-                            Box(modifier = Modifier.width(6.dp).height(height).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), CircleShape))
+                    // Center Voice Action Mic Button (large circle, raised slightly)
+                    Surface(
+                        onClick = { startVoiceInput() },
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary),
+                        modifier = Modifier
+                            .offset(y = (-16).dp)
+                            .size(80.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Mic,
+                                contentDescription = "Tap to Speak",
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(40.dp)
+                            )
                         }
                     }
 
@@ -130,9 +315,11 @@ fun PutAwayDetailsScreen(
                                 popUpTo(Routes.ADD_ITEM_DETAILS) { inclusive = true }
                             }
                         },
-                        modifier = Modifier.size(48.dp).border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), CircleShape)
+                        modifier = Modifier
+                            .size(56.dp)
+                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), CircleShape)
                     ) {
-                        Icon(Icons.Outlined.Check, contentDescription = "Save", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.Outlined.Check, contentDescription = "Save", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(26.dp))
                     }
                 }
             }
@@ -161,7 +348,7 @@ fun PutAwayDetailsScreen(
 
             // Editable Category Row
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Icon(Icons.Outlined.Label, contentDescription = "Edit Category", tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
+                Icon(Icons.AutoMirrored.Outlined.Label, contentDescription = "Edit Category", tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(20.dp))
                 BasicTextField(
                     value = category,
                     onValueChange = { category = it },
@@ -189,51 +376,66 @@ fun PutAwayDetailsScreen(
                 Text("Detailed Context", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
                 Card(
                     shape = RoundedCornerShape(12.dp),
-                    // Adaptive color matching theme
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-                            Column(modifier = Modifier.weight(1f)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
                                 Text("Live Transcript", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                BasicTextField(
-                                    value = transcript,
-                                    onValueChange = { transcript = it },
-                                    textStyle = TextStyle(
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontSize = 14.sp,
-                                        lineHeight = 20.sp
-                                    ),
-                                    decorationBox = { innerTextField ->
-                                        if (transcript.isEmpty()) {
-                                            Text(
-                                                text = "e.g., Hanging keys on the living room hook",
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                                fontSize = 14.sp
-                                            )
-                                        } else {
-                                            innerTextField()
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
+                                IconButton(
+                                    onClick = { startVoiceInput() },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Mic,
+                                        contentDescription = "Speak to fill fields",
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
-                            // 4. Working Clear Button
+                            // Working Clear Button
                             Icon(
                                 Icons.Outlined.Close,
                                 contentDescription = "Clear",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp).clickable { transcript = "" }
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clickable { transcript = "" }
                             )
                         }
+
+                        BasicTextField(
+                            value = transcript,
+                            onValueChange = { transcript = it },
+                            textStyle = TextStyle(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp
+                            ),
+                            decorationBox = { innerTextField ->
+                                if (transcript.isEmpty()) {
+                                    Text(
+                                        text = "e.g., Hanging keys on the living room hook",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                        fontSize = 14.sp
+                                    )
+                                } else {
+                                    innerTextField()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
 
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Icon(Icons.Outlined.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(14.dp))
-                            Text("Edit any word if something was misheard", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Text("Tap mic button or edit any word directly", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
                         }
                     }
                 }

@@ -2,11 +2,12 @@ package com.example.keepsafe.data.remote
 
 import retrofit2.Response
 import retrofit2.http.GET
+import retrofit2.http.Path
 
 interface KeepSafeApiService {
-    @GET("todos/1")
-    suspend fun getSingleTodo(): Response<RemoteTodo>
+    @GET("item")
+    suspend fun getItems(): Response<List<RemoteKeepSafeItem>>
 
-    @GET("todos")
-    suspend fun getStarterItems(): Response<List<RemoteTodo>>
+    @GET("item/{id}")
+    suspend fun getItemById(@Path("id") id: String): Response<RemoteKeepSafeItem>
 }

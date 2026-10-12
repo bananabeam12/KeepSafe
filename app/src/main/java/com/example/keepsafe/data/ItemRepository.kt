@@ -6,6 +6,8 @@ import android.graphics.BitmapFactory
 import com.example.keepsafe.R
 import com.example.keepsafe.data.local.ItemDao
 import com.example.keepsafe.data.remote.KeepSafeApiService
+import com.example.keepsafe.data.remote.RemoteKeepSafeItem
+import retrofit2.Response
 import com.example.keepsafe.viewmodel.ItemHistoryLog
 import com.example.keepsafe.viewmodel.KeepSafeItem
 import kotlinx.coroutines.Dispatchers
@@ -68,6 +70,14 @@ class ItemRepository(
                 val itemPlaceImagePath = obj.optString("itemPlaceImagePath", "").ifBlank { null }
                 val roomSectionImagePath = obj.optString("roomSectionImagePath", "").ifBlank { null }
 
+                // API items without a real photo always fall back to the living room default
+                // (also repairs items saved earlier with the old keys/bedroom drawable ids)
+                val isApiItem = id.startsWith("api_")
+                val resolvedPlaceRes =
+                    if (isApiItem && itemPlaceImagePath == null) R.drawable.living_room else itemPlaceImageRes
+                val resolvedRoomRes =
+                    if (isApiItem && roomSectionImagePath == null) R.drawable.living_room else roomSectionImageRes
+
                 val itemPlaceBitmap = itemPlaceImagePath?.let { path ->
                     val file = File(path)
                     if (file.exists()) BitmapFactory.decodeFile(path) else null
@@ -95,8 +105,8 @@ class ItemRepository(
                         title = title,
                         description = description,
                         category = category,
-                        itemPlaceImageRes = itemPlaceImageRes,
-                        roomSectionImageRes = roomSectionImageRes,
+                        itemPlaceImageRes = resolvedPlaceRes,
+                        roomSectionImageRes = resolvedRoomRes,
                         lastLogged = lastLogged,
                         historyLogs = historyLogs,
                         isRetrieved = isRetrieved,
@@ -107,8 +117,11 @@ class ItemRepository(
                     )
                 )
             }
-            // Filter out old default seed items ("1", "2", "3") and remote items
-            val cleanItems = items.filter { it.id != "1" && it.id != "2" && it.id != "3" && !it.id.startsWith("remote_") }
+            // Filter out old default seed items ("1", "2", "3") and remote items, and deduplicate by title
+            val cleanItems = items
+                .filter { it.id != "1" && it.id != "2" && it.id != "3" && !it.id.startsWith("remote_") }
+                .distinctBy { it.title.trim().lowercase() }
+
             saveItemsToDisk(cleanItems)
             cleanItems
         } catch (e: Exception) {
@@ -164,33 +177,64 @@ class ItemRepository(
     }
 
     /**
-     * Fetches a live dummy item from JSONPlaceholder REST API via Retrofit and Coroutines,
-     * and inserts it into local storage via ItemDao (`dao.insertItem()`).
+     * Fetches live items from MockAPI REST API via Retrofit and Coroutines,
+     * checks if items are already present, and inserts any new items into local storage.
      */
-    suspend fun fetchAndAddApiItem(): Resource<KeepSafeItem> = withContext(Dispatchers.IO) {
+    suspend fun fetchAndAddApiItems(): Resource<List<KeepSafeItem>> = withContext(Dispatchers.IO) {
         try {
-            val response = apiService.getSingleTodo()
+            val response = apiService.getItems()
             if (response.isSuccessful && response.body() != null) {
-                val remote = response.body()!!
-                val formattedTitle = remote.title.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-                val newItem = KeepSafeItem(
-                    id = "api_${remote.id}_${System.currentTimeMillis()}",
-                    title = "API: $formattedTitle",
-                    description = "Fetched live from JSONPlaceholder REST API (/todos/1)",
-                    category = "Living Room",
-                    itemPlaceImageRes = R.drawable.keys,
-                    roomSectionImageRes = R.drawable.living_room,
-                    lastLogged = "Fetched via Retrofit API",
-                    historyLogs = listOf(ItemHistoryLog("Fetched from REST API endpoint /todos/1", "Today")),
-                    isRetrieved = remote.completed
-                )
-                dao.insertItem(newItem)
-                Resource.Success(newItem)
+                val remoteList: List<RemoteKeepSafeItem> = response.body()!!
+                val currentLocalItems = dao.getAllItems()
+
+                val existingLocalIds = currentLocalItems.map { it.id }.toSet()
+                val existingLocalTitles = currentLocalItems.map { it.title.trim().lowercase() }.toSet()
+
+                val addedItems = mutableListOf<KeepSafeItem>()
+
+                remoteList.forEach { remote ->
+                    val remoteTitle = (remote.title ?: "").trim()
+                    if (remoteTitle.isNotBlank()) {
+                        val stableId = if (!remote.id.isNullOrBlank()) "api_${remote.id}" else "api_${remoteTitle.lowercase()}"
+                        val titleLower = remoteTitle.lowercase()
+
+                        // Check inside coroutine if item already exists locally by ID or Title
+                        if (!existingLocalIds.contains(stableId) && !existingLocalTitles.contains(titleLower)) {
+                            val formattedTitle = remoteTitle.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+
+                            // API items have no photos, so use the living room image as the default placeholder
+                            val placeDrawable = R.drawable.living_room
+                            val roomDrawable = R.drawable.living_room
+
+                            val newItem = KeepSafeItem(
+                                id = stableId,
+                                title = formattedTitle,
+                                description = remote.description ?: "Stored item location details",
+                                category = remote.category ?: "Living Room",
+                                itemPlaceImageRes = placeDrawable,
+                                roomSectionImageRes = roomDrawable,
+                                lastLogged = remote.lastLogged ?: "Just now",
+                                historyLogs = remote.historyLogs?.map {
+                                    ItemHistoryLog(
+                                        action = it.action ?: "Item stored",
+                                        timestamp = it.timestamp ?: "Today"
+                                    )
+                                } ?: listOf(ItemHistoryLog("Item stored", "Today")),
+                                isRetrieved = remote.isRetrieved ?: false
+                            )
+
+                            dao.insertItem(newItem)
+                            addedItems.add(newItem)
+                        }
+                    }
+                }
+
+                Resource.Success(addedItems)
             } else {
-                Resource.Error("API error: ${response.message()}")
+                Resource.Error("Couldn't sync items. Please try again.")
             }
         } catch (e: Exception) {
-            Resource.Error(e.localizedMessage ?: "Network error occurred")
+            Resource.Error("Couldn't sync items. Please try again.")
         }
     }
 
