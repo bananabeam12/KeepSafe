@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
@@ -143,16 +144,31 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
+            // API sync status is a banner above the list, so local items stay visible
             val apiState = viewModel.apiState
             if (apiState != null) {
                 item {
-                    ApiResourceStateCenterView(
+                    ApiStatusBanner(
                         apiState = apiState,
-                        onRetry = { viewModel.fetchApiItems() }
+                        onRetry = { viewModel.fetchApiItems() },
+                        onDismiss = { viewModel.resetApiState() }
                     )
                 }
+            }
+
+            val visibleItems = viewModel.filteredItems
+            if (visibleItems.isEmpty()) {
+                // Don't flash the empty state while the first sync is still running
+                if (apiState !is Resource.Loading) {
+                    item {
+                        EmptyItemsState(
+                            hasActiveFilter = viewModel.searchQuery.isNotBlank() ||
+                                    viewModel.selectedCategory != "Recents"
+                        )
+                    }
+                }
             } else {
-                items(viewModel.filteredItems) { item ->
+                items(visibleItems) { item ->
                     KeepSafeItemCard(item = item, navController = navController)
                 }
             }
@@ -201,60 +217,125 @@ fun HomeHeader(viewModel: HomeViewModel) {
 }
 
 @Composable
-fun ApiResourceStateCenterView(
+fun ApiStatusBanner(
     apiState: Resource<List<KeepSafeItem>>,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(260.dp),
-        contentAlignment = Alignment.Center
+    val containerColor = when (apiState) {
+        is Resource.Error -> MaterialTheme.colorScheme.errorContainer
+        is Resource.Success -> MaterialTheme.colorScheme.primaryContainer
+        is Resource.Loading -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val contentColor = when (apiState) {
+        is Resource.Error -> MaterialTheme.colorScheme.onErrorContainer
+        is Resource.Success -> MaterialTheme.colorScheme.onPrimaryContainer
+        is Resource.Loading -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.padding(24.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             when (apiState) {
                 is Resource.Loading -> {
                     CircularProgressIndicator(
-                        color = Color(0xFF3C4C0E),
-                        strokeWidth = 3.dp,
-                        modifier = Modifier.size(48.dp)
+                        color = contentColor,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(20.dp)
                     )
                     Text(
                         text = "Syncing items...",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = contentColor,
+                        modifier = Modifier.weight(1f)
                     )
                 }
                 is Resource.Success -> {
                     Text(
                         text = "Items updated successfully!",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF3C4C0E)
+                        color = contentColor,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(vertical = 12.dp)
                     )
                 }
                 is Resource.Error -> {
                     Text(
                         text = apiState.message ?: "Couldn't sync items. Please try again.",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        color = contentColor,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(vertical = 8.dp)
                     )
-                    Button(
-                        onClick = onRetry,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD6EB9B)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("Retry", color = Color.Black, fontWeight = FontWeight.Bold)
+                    TextButton(onClick = onRetry) {
+                        Text("Retry", color = contentColor, fontWeight = FontWeight.Bold)
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Dismiss",
+                            tint = contentColor,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun EmptyItemsState(hasActiveFilter: Boolean) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 48.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = if (hasActiveFilter) Icons.Filled.Search else Icons.Default.Add,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(32.dp)
+            )
+        }
+        Text(
+            text = if (hasActiveFilter) "No matching items" else "No items yet",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = if (hasActiveFilter) {
+                "Try a different search or category."
+            } else {
+                "Tap the + button to add your first item, or use the download icon to sync from the cloud."
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
     }
 }
 
@@ -430,10 +511,10 @@ fun HomeFloatingActionButton(onClick: () -> Unit) {
             .padding(bottom = 16.dp)
             .size(64.dp)
             .border(
-            width = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-            shape = CircleShape
-        )
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                shape = CircleShape
+            )
     ) {
         Icon(
             imageVector = Icons.Default.Add, tint = MaterialTheme.colorScheme.onPrimaryContainer,
